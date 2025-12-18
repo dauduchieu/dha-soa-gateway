@@ -9,9 +9,10 @@ const port = 3000
 app.use(express.json())
 app.use(cors())
 
-const authServiceTarget = "http://127.0.0.1:3001"
-const forumServiceTarget = "http://127.0.0.1:3002"
-const assistantServiceTarget = "http://127.0.0.1:3003"
+const authServiceTarget = "https://dha-soa-auth.onrender.com"
+const forumServiceTarget = "https://dha-soa-forum.onrender.com"
+const assistantServiceTarget = "https://dauduchieu-dha-soa-assistant.hf.space"
+const ragServiceTarget = "https://dauduchieu-dha-soa-rag.hf.space"
 
 const proxyMiddleware = (target) => {
   return createProxyMiddleware({
@@ -41,6 +42,7 @@ const proxyMiddleware = (target) => {
     },
   });
 };
+
 
 const authMiddleware = async (req, res, next) => {
     console.log(`${authServiceTarget}/auth/verify`)
@@ -75,7 +77,7 @@ app.put("/auth/users/me", authMiddleware, proxyMiddleware(authServiceTarget))
 app.post("/auth/users", authMiddleware, proxyMiddleware(authServiceTarget));
 app.get("/auth/users", authMiddleware, proxyMiddleware(authServiceTarget));
 app.get("/auth/users/:id", authMiddleware, proxyMiddleware(authServiceTarget));
-app.get("/auth/users/:id", authMiddleware, proxyMiddleware(authServiceTarget));
+app.put("/auth/users/:id", authMiddleware, proxyMiddleware(authServiceTarget));
 
 app.post("/forum/posts", authMiddleware, proxyMiddleware(forumServiceTarget))
 app.get("/forum/posts/:post_id", proxyMiddleware(forumServiceTarget))
@@ -94,5 +96,9 @@ app.get("/assistant/chats/:chat_id/messages", authMiddleware, proxyMiddleware(as
 app.post("/assistant/chats/:chat_id/messages", authMiddleware, proxyMiddleware(assistantServiceTarget))
 app.put("/assistant/chats/:chat_id", authMiddleware, proxyMiddleware(assistantServiceTarget))
 app.delete("/assistant/chats/:chat_id", authMiddleware, proxyMiddleware(assistantServiceTarget))
+
+app.post("/rag/documents", authMiddleware, proxyMiddleware(ragServiceTarget))
+app.get("/rag/documents", authMiddleware, proxyMiddleware(ragServiceTarget))
+app.delete("/rag/documents", authMiddleware, proxyMiddleware(ragServiceTarget))
 
 app.listen(port, () => console.log(`Gateway is running at port ${port}`))
