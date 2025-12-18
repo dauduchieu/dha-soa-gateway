@@ -14,23 +14,33 @@ const forumServiceTarget = "http://127.0.0.1:3002"
 const assistantServiceTarget = "http://127.0.0.1:3003"
 
 const proxyMiddleware = (target) => {
-    return createProxyMiddleware({
-        target: target,
-        changeOrigin: true,
-        on: { 
-            proxyReq: (proxyReq, req, res) => { 
-                const contentType = req.headers['content-type'];
-                const isMultipart = contentType && contentType.includes('multipart/form-data');
-                if (req.body && !isMultipart && Object.keys(req.body).length > 0) { 
-                    const reqBody = JSON.stringify(req.body) 
-                    proxyReq.setHeader("Content-Type", "application/json") 
-                    proxyReq.setHeader("Content-Length", Buffer.byteLength(reqBody)) 
-                    proxyReq.write(reqBody) 
-                } 
-            } 
-        }
-    })
-}
+  return createProxyMiddleware({
+    target,
+    changeOrigin: true,
+
+    onProxyReq(proxyReq, req, res) {
+      const contentType = req.headers["content-type"];
+      const isMultipart =
+        contentType && contentType.includes("multipart/form-data");
+
+      if (
+        req.body &&
+        !isMultipart &&
+        Object.keys(req.body).length > 0
+      ) {
+        const bodyData = JSON.stringify(req.body);
+        proxyReq.setHeader("Content-Type", "application/json");
+        proxyReq.setHeader("Content-Length", Buffer.byteLength(bodyData));
+        proxyReq.write(bodyData);
+      }
+    },
+
+    onError(err, req, res) {
+      console.error("Proxy error:", err);
+      res.status(502).json({ message: "Bad gateway" });
+    },
+  });
+};
 
 const authMiddleware = async (req, res, next) => {
     console.log(`${authServiceTarget}/auth/verify`)
