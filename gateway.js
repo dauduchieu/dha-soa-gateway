@@ -9,38 +9,28 @@ const port = 3000
 app.use(express.json())
 app.use(cors())
 
-const authServiceTarget = "https://dha-soa-auth.onrender.com"
-const forumServiceTarget = "https://dha-soa-forum.onrender.com"
-const assistantServiceTarget = "https://dauduchieu-dha-soa-assistant.hf.space"
-const ragServiceTarget = "https://dauduchieu-dha-soa-rag.hf.space"
+const authServiceTarget = "http://127.0.0.1:3001"
+const forumServiceTarget = "http://127.0.0.1:3002"
+const assistantServiceTarget = "http://127.0.0.1:3003"
 
-const proxyMiddleware = (target) =>
-  createProxyMiddleware({
-    target,
-    changeOrigin: true,
-
-    onProxyReq(proxyReq, req, res) {
-      const contentType = req.headers["content-type"];
-      const isMultipart =
-        contentType && contentType.includes("multipart/form-data");
-
-      if (
-        req.body &&
-        !isMultipart &&
-        Object.keys(req.body).length > 0
-      ) {
-        const bodyData = JSON.stringify(req.body);
-        proxyReq.setHeader("Content-Type", "application/json");
-        proxyReq.setHeader("Content-Length", Buffer.byteLength(bodyData));
-        proxyReq.write(bodyData);
-      }
-    },
-
-    onError(err, req, res) {
-      console.error("Proxy error:", err);
-      res.status(502).json({ message: "Bad gateway" });
-    },
-});
+const proxyMiddleware = (target) => {
+    return createProxyMiddleware({
+        target: target,
+        changeOrigin: true,
+        on: { 
+            proxyReq: (proxyReq, req, res) => { 
+                const contentType = req.headers['content-type'];
+                const isMultipart = contentType && contentType.includes('multipart/form-data');
+                if (req.body && !isMultipart && Object.keys(req.body).length > 0) { 
+                    const reqBody = JSON.stringify(req.body) 
+                    proxyReq.setHeader("Content-Type", "application/json") 
+                    proxyReq.setHeader("Content-Length", Buffer.byteLength(reqBody)) 
+                    proxyReq.write(reqBody) 
+                } 
+            } 
+        }
+    })
+}
 
 const authMiddleware = async (req, res, next) => {
     console.log(`${authServiceTarget}/auth/verify`)
@@ -75,7 +65,7 @@ app.put("/auth/users/me", authMiddleware, proxyMiddleware(authServiceTarget))
 app.post("/auth/users", authMiddleware, proxyMiddleware(authServiceTarget));
 app.get("/auth/users", authMiddleware, proxyMiddleware(authServiceTarget));
 app.get("/auth/users/:id", authMiddleware, proxyMiddleware(authServiceTarget));
-app.put("/auth/users/:id", authMiddleware, proxyMiddleware(authServiceTarget));
+app.get("/auth/users/:id", authMiddleware, proxyMiddleware(authServiceTarget));
 
 app.post("/forum/posts", authMiddleware, proxyMiddleware(forumServiceTarget))
 app.get("/forum/posts/:post_id", proxyMiddleware(forumServiceTarget))
@@ -94,9 +84,5 @@ app.get("/assistant/chats/:chat_id/messages", authMiddleware, proxyMiddleware(as
 app.post("/assistant/chats/:chat_id/messages", authMiddleware, proxyMiddleware(assistantServiceTarget))
 app.put("/assistant/chats/:chat_id", authMiddleware, proxyMiddleware(assistantServiceTarget))
 app.delete("/assistant/chats/:chat_id", authMiddleware, proxyMiddleware(assistantServiceTarget))
-
-app.post("/rag/documents", authMiddleware, proxyMiddleware(ragServiceTarget))
-app.get("/rag/documents", authMiddleware, proxyMiddleware(ragServiceTarget))
-app.delete("/rag/documents", authMiddleware, proxyMiddleware(ragServiceTarget))
 
 app.listen(port, () => console.log(`Gateway is running at port ${port}`))
