@@ -9,10 +9,10 @@ const port = 3000
 app.use(express.json())
 app.use(cors())
 
-const authServiceTarget = "http://127.0.0.1:3001"
-const forumServiceTarget = "http://127.0.0.1:3002"
-const assistantServiceTarget = "http://127.0.0.1:3003"
-const ragServiceTarget = "http://127.0.0.1:3005"
+const authServiceTarget = "https://dha-soa-auth.onrender.com"
+const forumServiceTarget = "https://dha-soa-forum.onrender.com"
+const assistantServiceTarget = "https://dauduchieu-dha-soa-assistant.hf.space"
+const ragServiceTarget = "https://dauduchieu-dha-soa-rag.hf.space"
 
 const proxyMiddleware = (target) => {
     return createProxyMiddleware({
