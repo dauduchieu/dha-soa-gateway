@@ -14,24 +14,33 @@ const forumServiceTarget = "https://dha-soa-forum.onrender.com"
 const assistantServiceTarget = "https://dauduchieu-dha-soa-assistant.hf.space"
 const ragServiceTarget = "https://dauduchieu-dha-soa-rag.hf.space"
 
-const proxyMiddleware = (target) => {
-    return createProxyMiddleware({
-        target: target,
-        changeOrigin: true,
-        on: { 
-            proxyReq: (proxyReq, req, res) => { 
-                const contentType = req.headers['content-type'];
-                const isMultipart = contentType && contentType.includes('multipart/form-data');
-                if (req.body && !isMultipart && Object.keys(req.body).length > 0) { 
-                    const reqBody = JSON.stringify(req.body) 
-                    proxyReq.setHeader("Content-Type", "application/json") 
-                    proxyReq.setHeader("Content-Length", Buffer.byteLength(reqBody)) 
-                    proxyReq.write(reqBody) 
-                } 
-            } 
-        }
-    })
-}
+const proxyMiddleware = (target) =>
+  createProxyMiddleware({
+    target,
+    changeOrigin: true,
+
+    onProxyReq(proxyReq, req, res) {
+      const contentType = req.headers["content-type"];
+      const isMultipart =
+        contentType && contentType.includes("multipart/form-data");
+
+      if (
+        req.body &&
+        !isMultipart &&
+        Object.keys(req.body).length > 0
+      ) {
+        const bodyData = JSON.stringify(req.body);
+        proxyReq.setHeader("Content-Type", "application/json");
+        proxyReq.setHeader("Content-Length", Buffer.byteLength(bodyData));
+        proxyReq.write(bodyData);
+      }
+    },
+
+    onError(err, req, res) {
+      console.error("Proxy error:", err);
+      res.status(502).json({ message: "Bad gateway" });
+    },
+});
 
 const authMiddleware = async (req, res, next) => {
     console.log(`${authServiceTarget}/auth/verify`)
