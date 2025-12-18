@@ -1,45 +1,22 @@
 const express = require("express");
-const { createProxyMiddleware } = require("http-proxy-middleware");
 const axios = require("axios");
 const cors = require("cors");
 
 const app = express();
 const port = 3000;
 
-/* ======================
-   GLOBAL MIDDLEWARE
-====================== */
 app.use(cors());
-
-// Log để debug
-app.use((req, res, next) => {
-  console.log(`[GATEWAY] ${req.method} ${req.originalUrl}`);
-  next();
-});
+app.use(express.json());
 
 /* ======================
    SERVICE TARGETS
 ====================== */
-const authServiceTarget = "https://dha-soa-auth.onrender.com";
-const forumServiceTarget = "https://dha-soa-forum.onrender.com";
-const assistantServiceTarget = "https://dauduchieu-dha-soa-assistant.hf.space";
-const ragServiceTarget = "https://dauduchieu-dha-soa-rag.hf.space";
-
-/* ======================
-   PROXY FACTORY
-====================== */
-const proxy = (target) =>
-  createProxyMiddleware({
-    target,
-    changeOrigin: true,
-    timeout: 60000,
-    proxyTimeout: 60000,
-
-    onError(err, req, res) {
-      console.error("[PROXY ERROR]", err.message);
-      res.status(502).json({ message: "Bad gateway" });
-    },
-  });
+const SERVICES = {
+  auth: "https://dha-soa-auth.onrender.com",
+  forum: "https://dha-soa-forum.onrender.com",
+  assistant: "https://dauduchieu-dha-soa-assistant.hf.space",
+  rag: "https://dauduchieu-dha-soa-rag.hf.space",
+};
 
 /* ======================
    AUTH MIDDLEWARE
@@ -47,7 +24,7 @@ const proxy = (target) =>
 const authMiddleware = async (req, res, next) => {
   try {
     const response = await axios.post(
-      `${authServiceTarget}/auth/verify`,
+      `${SERVICES.auth}/auth/verify`,
       {},
       {
         headers: {
@@ -63,9 +40,10 @@ const authMiddleware = async (req, res, next) => {
       return res.status(401).json({ message: "Unauthorized" });
     }
 
-    // forward identity
-    req.headers["x-user-id"] = data.user_id;
-    req.headers["x-user-role"] = data.role;
+    req.user = {
+      id: data.user_id,
+      role: data.role,
+    };
 
     next();
   } catch (err) {
@@ -75,87 +53,84 @@ const authMiddleware = async (req, res, next) => {
 };
 
 /* ======================
-   AUTH ROUTES
+   GENERIC FORWARDER
 ====================== */
-app.post("/auth/register", proxy(authServiceTarget));
-app.post("/auth/login", proxy(authServiceTarget));
-app.post("/auth/google", proxy(authServiceTarget));
-app.post("/auth/refresh", proxy(authServiceTarget));
+const forward = (serviceName, stripPrefix) => async (req, res) => {
+  try {
+    const url =
+      SERVICES[serviceName] +
+      req.originalUrl.replace(stripPrefix, "");
 
-app.get("/auth/users/me", authMiddleware, proxy(authServiceTarget));
-app.put("/auth/users/me", authMiddleware, proxy(authServiceTarget));
+    const response = await axios({
+      method: req.method,
+      url,
+      headers: {
+        ...req.headers,
+        host: undefined,
+        "x-user-id": req.user?.id,
+        "x-user-role": req.user?.role,
+      },
+      data: req.body,
+      params: req.query,
+      timeout: 60000,
+    });
 
-// Admin
-app.post("/auth/users", authMiddleware, proxy(authServiceTarget));
-app.get("/auth/users", authMiddleware, proxy(authServiceTarget));
-app.get("/auth/users/:id", authMiddleware, proxy(authServiceTarget));
-app.put("/auth/users/:id", authMiddleware, proxy(authServiceTarget));
+    res.status(response.status).json(response.data);
+  } catch (err) {
+    console.error(
+      "[FORWARD ERROR]",
+      err.response?.status,
+      err.message
+    );
+
+    res
+      .status(err.response?.status || 502)
+      .json(err.response?.data || { message: "Bad gateway" });
+  }
+};
 
 /* ======================
-   FORUM ROUTES
+   ROUTES
 ====================== */
-app.post("/forum/posts", authMiddleware, proxy(forumServiceTarget));
-app.get("/forum/posts", proxy(forumServiceTarget));
-app.get("/forum/posts/:post_id", proxy(forumServiceTarget));
-app.put("/forum/posts/:post_id", authMiddleware, proxy(forumServiceTarget));
-app.delete("/forum/posts/:post_id", authMiddleware, proxy(forumServiceTarget));
 
+// Auth (no verify)
+app.post("/auth/register", forward("auth", ""));
+app.post("/auth/login", forward("auth", ""));
+app.post("/auth/google", forward("auth", ""));
+app.post("/auth/refresh", forward("auth", ""));
+
+// Auth (verify)
+app.get("/auth/users/me", authMiddleware, forward("auth", ""));
+app.put("/auth/users/me", authMiddleware, forward("auth", ""));
+app.post("/auth/users", authMiddleware, forward("auth", ""));
+app.get("/auth/users", authMiddleware, forward("auth", ""));
+app.get("/auth/users/:id", authMiddleware, forward("auth", ""));
+app.put("/auth/users/:id", authMiddleware, forward("auth", ""));
+
+// Forum
+app.post("/forum/posts", authMiddleware, forward("forum", "/forum"));
+app.get("/forum/posts", forward("forum", "/forum"));
+app.get("/forum/posts/:id", forward("forum", "/forum"));
+app.put("/forum/posts/:id", authMiddleware, forward("forum", "/forum"));
+app.delete("/forum/posts/:id", authMiddleware, forward("forum", "/forum"));
+
+// Assistant
+app.post("/assistant/chats", authMiddleware, forward("assistant", "/assistant"));
+app.get("/assistant/chats", authMiddleware, forward("assistant", "/assistant"));
 app.post(
-  "/forum/posts/:post_id/comments",
+  "/assistant/chats/:id/messages",
   authMiddleware,
-  proxy(forumServiceTarget)
-);
-app.get(
-  "/forum/posts/:post_id/comments",
-  proxy(forumServiceTarget)
-);
-app.put(
-  "/forum/posts/:post_id/comments/:comment_id",
-  authMiddleware,
-  proxy(forumServiceTarget)
-);
-app.delete(
-  "/forum/posts/:post_id/comments/:comment_id",
-  authMiddleware,
-  proxy(forumServiceTarget)
+  forward("assistant", "/assistant")
 );
 
-/* ======================
-   ASSISTANT ROUTES
-====================== */
-app.post("/assistant/chats", authMiddleware, proxy(assistantServiceTarget));
-app.get("/assistant/chats", authMiddleware, proxy(assistantServiceTarget));
-app.get(
-  "/assistant/chats/:chat_id/messages",
-  authMiddleware,
-  proxy(assistantServiceTarget)
-);
-app.post(
-  "/assistant/chats/:chat_id/messages",
-  authMiddleware,
-  proxy(assistantServiceTarget)
-);
-app.put(
-  "/assistant/chats/:chat_id",
-  authMiddleware,
-  proxy(assistantServiceTarget)
-);
-app.delete(
-  "/assistant/chats/:chat_id",
-  authMiddleware,
-  proxy(assistantServiceTarget)
-);
+// RAG
+app.post("/rag/documents", authMiddleware, forward("rag", "/rag"));
+app.get("/rag/documents", authMiddleware, forward("rag", "/rag"));
+app.delete("/rag/documents", authMiddleware, forward("rag", "/rag"));
 
 /* ======================
-   RAG ROUTES
-====================== */
-app.post("/rag/documents", authMiddleware, proxy(ragServiceTarget));
-app.get("/rag/documents", authMiddleware, proxy(ragServiceTarget));
-app.delete("/rag/documents", authMiddleware, proxy(ragServiceTarget));
-
-/* ======================
-   START SERVER
+   START
 ====================== */
 app.listen(port, () => {
-  console.log(`🚀 API Gateway running on port ${port}`);
+  console.log(`🚀 Gateway running on port ${port}`);
 });
